@@ -18,18 +18,42 @@
   const layer = $("cursor-layer");
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  const ADJECTIVES = ["Swift", "Sunny", "Cosmic", "Quiet", "Brave", "Fuzzy", "Lucky", "Neon", "Clever", "Mellow",
-    "Zippy", "Bold", "Gentle", "Witty", "Curious", "Jolly", "Mighty", "Sleepy", "Electric", "Velvet"];
-  const ANIMALS = ["Otter", "Fox", "Panda", "Koala", "Falcon", "Lynx", "Penguin", "Gecko", "Moose", "Dolphin",
-    "Raccoon", "Owl", "Tiger", "Llama", "Hedgehog", "Narwhal", "Badger", "Sparrow", "Axolotl", "Wombat"];
+  const storage = (store, key, value) => {
+    try {
+      if (value === undefined) return store.getItem(key);
+      if (value === null) store.removeItem(key);
+      else store.setItem(key, value);
+    } catch { return null; }
+  };
 
-  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => (b % 36).toString(36)).join("") +
     Date.now().toString(36).slice(-4);
 
+  // ---------------------------------------------------------------------------
+  // Names and badges. Everyone is "Visitor #N", where N is the order they first
+  // arrived in. The number is saved in their browser, so it stays theirs.
+  // ---------------------------------------------------------------------------
+  function badgeFor(v) {
+    if (!v) return null;
+    if (v === 1) return { icon: "👑", label: "First visitor" };
+    if (v <= 10) return { icon: "💎", label: "Top 10" };
+    if (v <= 100) return { icon: "🥇", label: "Top 100" };
+    if (v <= 1000) return { icon: "🥈", label: "Top 1,000" };
+    if (v <= 10000) return { icon: "🥉", label: "Top 10,000" };
+    return { icon: "⭐", label: "Visitor" };
+  }
+
+  const nameFor = (p) => (p.bot ? `Bot ${p.bot}` : p.v ? `Visitor #${p.v.toLocaleString()}` : "Visitor");
+  const iconFor = (p) => (p.bot ? "🤖" : badgeFor(p.v)?.icon || "");
+  const labelFor = (p) => [iconFor(p), nameFor(p)].filter(Boolean).join(" ");
+
+  const numberKey = `visitme:${SITE_ID}:number`;
+  const storedNumber = Number(storage(localStorage, numberKey));
+
   const me = {
     id: randomId(),
-    name: `${pick(ADJECTIVES)} ${pick(ANIMALS)}`,
+    v: Number.isInteger(storedNumber) && storedNumber > 0 ? storedNumber : 0,
+    bot: 0,
     hue: Math.floor(Math.random() * 360),
   };
 
@@ -50,6 +74,18 @@
 
   const myCursor = makeCursor("You", me.hue, true);
 
+  function renderMe() {
+    myCursor.querySelector(".tag").textContent = [iconFor(me), "You"].filter(Boolean).join(" ");
+    myCursor.style.setProperty("--h", me.hue);
+    const badge = badgeFor(me.v);
+    const box = $("my-badge");
+    if (!badge) return;
+    box.hidden = false;
+    $("my-badge-icon").textContent = badge.icon;
+    $("my-badge-number").textContent = `#${me.v.toLocaleString()}`;
+    $("my-badge-label").textContent = badge.label;
+  }
+
   // ---------------------------------------------------------------------------
   // Track my pointer
   // ---------------------------------------------------------------------------
@@ -60,12 +96,12 @@
   const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
   // Position as a fraction of the whole page, so it lines up across screen sizes.
-  function pagePos(cx = clientX, cy = clientY) {
-    if (cx === null) return { x: null, y: null };
+  function pagePos() {
+    if (clientX === null) return { x: null, y: null };
     const doc = document.documentElement;
     return {
-      x: clamp01((cx + scrollX) / doc.scrollWidth),
-      y: clamp01((cy + scrollY) / doc.scrollHeight),
+      x: clamp01((clientX + scrollX) / doc.scrollWidth),
+      y: clamp01((clientY + scrollY) / doc.scrollHeight),
     };
   }
 
@@ -128,24 +164,26 @@
 
   const num01 = (v) => (typeof v === "number" && v >= 0 && v <= 1 ? v : null);
   const hueOf = (v) => (Number.isFinite(v) ? ((Math.round(v) % 360) + 360) % 360 : 0);
-  const nameOf = (v) => (typeof v === "string" ? v.trim().slice(0, 24) : "") || "Someone";
+  const botOf = (v) => (Number.isInteger(v) && v > 0 && v < 100 ? v : 0);
+  const numberOf = (v) => (Number.isInteger(v) && v > 0 && v < 1e9 ? v : 0);
 
   function upsertPeer(id, msg) {
-    const name = nameOf(msg.n);
+    const bot = botOf(msg.b);
+    const v = bot ? 0 : numberOf(msg.v);
     const hue = hueOf(msg.h);
     let p = peers.get(id);
     let listChanged = false;
 
     if (!p) {
       if (peers.size >= MAX_PEERS) return null;
-      p = { id, name, hue, el: makeCursor(name, hue, false), tx: null, ty: null, cx: null, cy: null };
+      p = { id, bot, v, hue, tx: null, ty: null, cx: null, cy: null };
+      p.el = makeCursor(labelFor(p), hue, false);
       peers.set(id, p);
       listChanged = true;
-      if (Date.now() > discoveryUntil) toast(`${name} joined`, hue);
-    } else if (p.name !== name || p.hue !== hue) {
-      p.name = name;
-      p.hue = hue;
-      p.el.querySelector(".tag").textContent = name;
+      if (Date.now() > discoveryUntil) toast(`${labelFor(p)} joined`, hue);
+    } else if (p.bot !== bot || p.v !== v || p.hue !== hue) {
+      Object.assign(p, { bot, v, hue });
+      p.el.querySelector(".tag").textContent = labelFor(p);
       p.el.style.setProperty("--h", hue);
       listChanged = true;
     }
@@ -164,7 +202,7 @@
     if (!p) return;
     p.el.remove();
     peers.delete(id);
-    if (announce) toast(`${p.name} left`, p.hue);
+    if (announce) toast(`${labelFor(p)} left`, p.hue);
     renderPeople();
   }
 
@@ -196,16 +234,23 @@
   }
   requestAnimationFrame(frame);
 
-  // Pick a color far from everyone else's once we know who's here.
+  // Colors: pick the hue furthest from everyone else's.
+  const hueDist = (a, b) => { const d = Math.abs(a - b) % 360; return Math.min(d, 360 - d); };
+  const minHueDist = (h, taken) => taken.reduce((m, o) => Math.min(m, hueDist(h, o)), 360);
+  function bestHue(taken, start = Math.floor(Math.random() * 360)) {
+    let best = start;
+    for (let i = 0; i < 360; i += 5) {
+      const h = (start + i) % 360;
+      if (minHueDist(h, taken) > minHueDist(best, taken)) best = h;
+    }
+    return best;
+  }
+
   function avoidColorClash() {
-    const hues = [...peers.values()].map((p) => p.hue);
-    const dist = (a, b) => { const d = Math.abs(a - b) % 360; return Math.min(d, 360 - d); };
-    const minDist = (h) => hues.reduce((m, o) => Math.min(m, dist(h, o)), 360);
-    if (!hues.length || minDist(me.hue) >= 30) return;
-    let best = me.hue;
-    for (let h = 0; h < 360; h += 5) if (minDist(h) > minDist(best)) best = h;
-    me.hue = best;
-    myCursor.style.setProperty("--h", best);
+    const taken = [...peers.values()].map((p) => p.hue);
+    if (!taken.length || minHueDist(me.hue, taken) >= 30) return;
+    me.hue = bestHue(taken, me.hue);
+    renderMe();
     renderPeople();
     publish("s");
   }
@@ -214,18 +259,24 @@
   // UI: online count, people list, toasts, ripples
   // ---------------------------------------------------------------------------
   function renderPeople() {
-    animateCount($("online-count"), peers.size + 1);
+    const others = [...peers.values()];
+    // Bots are shown, but "Online now" only counts real people.
+    animateCount($("online-count"), others.filter((p) => !p.bot).length + 1);
+
+    others.sort((a, b) => (a.bot - b.bot) || ((a.v || Infinity) - (b.v || Infinity)));
+    const all = [{ ...me, isMe: true }, ...others];
     const list = $("people-list");
     list.textContent = "";
-    const all = [{ ...me, isMe: true }, ...[...peers.values()].sort((a, b) => a.name.localeCompare(b.name))];
     const SHOW = 30;
     for (const p of all.slice(0, SHOW)) {
       const li = document.createElement("li");
       if (p.isMe) li.className = "is-me";
       li.style.setProperty("--h", p.hue);
+      const badge = p.bot ? { label: "Bot" } : badgeFor(p.v);
+      if (badge) li.title = badge.label;
       const swatch = document.createElement("span");
       swatch.className = "swatch";
-      li.append(swatch, document.createTextNode(p.name));
+      li.append(swatch, document.createTextNode(labelFor(p)));
       if (p.isMe) {
         const you = document.createElement("span");
         you.className = "you";
@@ -239,6 +290,7 @@
       li.textContent = `+${all.length - SHOW} more`;
       list.append(li);
     }
+    updatePanel();
   }
 
   function toast(text, hue) {
@@ -306,18 +358,25 @@
   let lastSent = 0;
   let announceTimer = null;
 
+  function send(id, msg) {
+    if (!client || !client.connected) return false;
+    client.publish(`${TOPIC}/${id}`, JSON.stringify(msg), { qos: 0 });
+    return true;
+  }
+
   function publish(t) {
-    if (!client || !client.connected) return;
     const { x, y } = pagePos();
-    const msg = t === "l" ? { t } : { t, n: me.name, h: me.hue, x, y };
-    client.publish(`${TOPIC}/${me.id}`, JSON.stringify(msg), { qos: 0 });
-    lastSent = Date.now();
+    if (send(me.id, t === "l" ? { t } : { t, v: me.v || undefined, h: me.hue, x, y })) lastSent = Date.now();
   }
 
   // Someone new said hello: tell them we're here (with jitter so we don't all reply at once).
   function scheduleAnnounce() {
     if (announceTimer) return;
-    announceTimer = setTimeout(() => { announceTimer = null; publish("s"); }, 100 + Math.random() * 400);
+    announceTimer = setTimeout(() => {
+      announceTimer = null;
+      publish("s");
+      bots.forEach((b) => sendBot(b, "s"));
+    }, 100 + Math.random() * 400);
   }
 
   setInterval(() => {
@@ -345,7 +404,9 @@
       setStatus("live", "Live");
       discoveryUntil = Date.now() + DISCOVERY_MS;
       client.subscribe(`${TOPIC}/+`, { qos: 0 }, (err) => {
-        if (!err) publish("h");
+        if (err) return;
+        publish("h");
+        bots.forEach((b) => sendBot(b, "h"));
       });
       setTimeout(avoidColorClash, DISCOVERY_MS - 500);
     });
@@ -370,35 +431,162 @@
     });
   }
 
-  addEventListener("pagehide", () => publish("l"));
+  addEventListener("pagehide", () => {
+    publish("l");
+    bots.forEach((b) => sendBot(b, "l"));
+  });
   addEventListener("pageshow", (e) => {
     if (!e.persisted || !client) return;
-    if (client.connected) publish("h");
-    else client.reconnect();
+    if (client.connected) {
+      publish("h");
+      bots.forEach((b) => sendBot(b, "h"));
+    } else {
+      client.reconnect();
+    }
   });
+
+  // ---------------------------------------------------------------------------
+  // Owner-only cursor bots. Open the site once with your #admin=<key> link to
+  // unlock. Bots run in your tab (while it's open) and everyone sees them, labeled 🤖.
+  // ---------------------------------------------------------------------------
+  const ADMIN_STORE = `visitme:${cfg.SITE_ID}:admin`;
+  const MAX_BOTS = 8;
+  const BOT_TICK_MS = 120;
+  const bots = [];
+  let panel = null;
+
+  async function sha256(text) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function isAdmin() {
+    const fromUrl = location.hash.match(/^#admin=(.+)$/)?.[1];
+    // Hide the key from the address bar so it isn't copied with the invite link.
+    if (fromUrl) history.replaceState(null, "", location.pathname + location.search);
+    if (!cfg.ADMIN_HASH || !crypto.subtle) return false;
+    const key = fromUrl ? decodeURIComponent(fromUrl) : storage(localStorage, ADMIN_STORE);
+    if (!key || (await sha256(key)) !== cfg.ADMIN_HASH) return false;
+    storage(localStorage, ADMIN_STORE, key);
+    return true;
+  }
+
+  const rand = (min, max) => min + Math.random() * (max - min);
+
+  function sendBot(b, t) {
+    if (send(b.id, t === "l" ? { t } : { t, b: b.n, h: b.hue, x: b.x, y: b.y })) b.lastSent = Date.now();
+  }
+
+  // Bots from all of the owner's tabs show up as peers, so count those too.
+  const allBotNumbers = () => new Set([...bots.map((b) => b.n), ...[...peers.values()].filter((p) => p.bot).map((p) => p.bot)]);
+
+  function addBot() {
+    const used = allBotNumbers();
+    if (used.size >= MAX_BOTS) return;
+    let n = 1;
+    while (used.has(n)) n++;
+    const taken = [me.hue, ...[...peers.values()].map((p) => p.hue), ...bots.map((b) => b.hue)];
+    const b = {
+      id: randomId(), n, hue: bestHue(taken),
+      x: rand(0.1, 0.9), y: rand(0.1, 0.9), tx: rand(0.05, 0.95), ty: rand(0.05, 0.95),
+      waitUntil: 0, phase: rand(0, 6.28), lastSent: 0,
+    };
+    bots.push(b);
+    sendBot(b, "h");
+    updatePanel();
+  }
+
+  function removeBot(b = bots[bots.length - 1]) {
+    if (!b) return;
+    bots.splice(bots.indexOf(b), 1);
+    sendBot(b, "l");
+    updatePanel();
+  }
+
+  // Wander: glide to a random spot, pause, sometimes click, repeat.
+  setInterval(() => {
+    const now = Date.now();
+    for (const b of bots) {
+      if (now < b.waitUntil) {
+        if (now - b.lastSent > HEARTBEAT_MS) sendBot(b, "s");
+        continue;
+      }
+      const dx = b.tx - b.x;
+      const dy = b.ty - b.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 0.01) {
+        if (Math.random() < 0.35) sendBot(b, "c");
+        b.waitUntil = now + rand(300, 2500);
+        b.tx = rand(0.05, 0.95);
+        b.ty = rand(0.05, 0.95);
+        continue;
+      }
+      const step = Math.min(dist, Math.max(0.006, dist * 0.14));
+      const wobble = Math.sin(now / 350 + b.phase) * 0.004;
+      b.x = clamp01(b.x + (dx / dist) * step - (dy / dist) * wobble);
+      b.y = clamp01(b.y + (dy / dist) * step + (dx / dist) * wobble);
+      sendBot(b, "s");
+    }
+  }, BOT_TICK_MS);
+
+  function updatePanel() {
+    if (!panel) return;
+    const total = allBotNumbers().size;
+    panel.querySelector(".admin-count").textContent = `${total}/${MAX_BOTS}`;
+    panel.querySelector('[data-act="add"]').disabled = total >= MAX_BOTS;
+    panel.querySelector('[data-act="remove"]').disabled = !bots.length;
+    panel.querySelector('[data-act="clear"]').disabled = !bots.length;
+  }
+
+  function showPanel() {
+    panel = document.createElement("div");
+    panel.className = "admin";
+    panel.innerHTML = `
+      <div class="admin-title">🤖 Cursor bots <span class="admin-count"></span></div>
+      <div class="admin-row">
+        <button type="button" data-act="add">+ Add</button>
+        <button type="button" data-act="remove">− Remove</button>
+        <button type="button" data-act="clear">Clear</button>
+      </div>
+      <button type="button" class="admin-lock" data-act="lock">Lock admin</button>`;
+    panel.addEventListener("click", (e) => {
+      const act = e.target.closest("button")?.dataset.act;
+      if (act === "add") addBot();
+      if (act === "remove") removeBot();
+      if (act === "clear" || act === "lock") while (bots.length) removeBot();
+      if (act === "lock") {
+        storage(localStorage, ADMIN_STORE, null);
+        panel.remove();
+        panel = null;
+        document.body.classList.remove("has-admin");
+      }
+    });
+    document.body.append(panel);
+    document.body.classList.add("has-admin");
+    updatePanel();
+  }
+
+  isAdmin().then((ok) => { if (ok) showPanel(); });
 
   // ---------------------------------------------------------------------------
   // Visit counters (Abacus free counter API, with live SSE updates)
   // ---------------------------------------------------------------------------
-  const storage = (store, key, value) => {
-    try {
-      if (value === undefined) return store.getItem(key);
-      store.setItem(key, value);
-    } catch { return null; }
-  };
-
   async function counter(action, key) {
     const res = await fetch(`${cfg.COUNTER_API}/${action}/${SITE_ID}/${key}`);
     if (!res.ok) throw new Error(`${action} ${key}: ${res.status}`);
     return (await res.json()).value;
   }
 
-  async function trackCounter(key, elId, shouldHit) {
+  async function trackCounter(key, elId, shouldHit, onHit) {
     const el = $(elId);
     try {
       let value;
-      if (shouldHit) value = await counter("hit", key);
-      else value = await counter("get", key).catch(() => counter("hit", key));
+      if (shouldHit) {
+        value = await counter("hit", key);
+        onHit?.(value);
+      } else {
+        value = await counter("get", key).catch(() => counter("hit", key));
+      }
       animateCount(el, value);
     } catch {
       el.textContent = "?";
@@ -414,17 +602,22 @@
     };
   }
 
-  // A "visit" is counted once per browser tab session; a "visitor" once per browser.
+  // A "visit" counts once per browser tab session. A new visitor's count
+  // becomes their permanent visitor number.
   const visitKey = `visitme:${SITE_ID}:visit`;
-  const visitorKey = `visitme:${SITE_ID}:visitor`;
   const newVisit = !storage(sessionStorage, visitKey);
-  const newVisitor = !storage(localStorage, visitorKey);
   storage(sessionStorage, visitKey, "1");
-  storage(localStorage, visitorKey, "1");
 
   trackCounter("visits", "visit-count", newVisit);
-  trackCounter("visitors", "visitor-count", newVisitor);
+  trackCounter("visitors", "visitor-count", !me.v, (value) => {
+    me.v = value;
+    storage(localStorage, numberKey, String(value));
+    renderMe();
+    renderPeople();
+    publish("s");
+  });
 
+  renderMe();
   renderPeople();
   connect();
 })();

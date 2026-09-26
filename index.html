@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
   <main class="stage">
@@ -23,7 +23,12 @@
 
     <section class="hero">
       <p class="eyebrow">Live right now</p>
-      <p class="lede">Every cursor you see is a real person on this page. Click anywhere to wave.</p>
+      <p class="lede">See everyone's cursor live, right now. Click anywhere to wave.</p>
+      <p class="my-badge" id="my-badge" hidden>
+        <span class="my-badge-icon" id="my-badge-icon"></span>
+        <span>You're visitor <strong id="my-badge-number"></strong></span>
+        <span class="my-badge-label" id="my-badge-label"></span>
+      </p>
     </section>
 
     <section class="stats">
@@ -55,7 +60,7 @@
   <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"
           integrity="sha384-9WWboT9UtuPFRlOLq4FygQkcJxzYcpz8SXGkNyCEXM+44n14xzjNlrRKYZwuF/A6"
           crossorigin="anonymous"></script>
-  <script src="js/config.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/config.js?v=3"></script>
+  <script src="js/app.js?v=3"></script>
 </body>
 </html>

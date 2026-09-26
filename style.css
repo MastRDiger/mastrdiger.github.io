@@ -83,6 +83,19 @@ h1 {
 }
 .lede { margin: 16px 0 0; max-width: 32em; font-size: 18px; color: var(--muted); line-height: 1.5; }
 
+.my-badge {
+  display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 20px 0 0; padding: 8px 16px 8px 10px; border-radius: 999px;
+  background: var(--card); border: 1px solid var(--card-border); font-size: 15px;
+}
+.my-badge[hidden] { display: none; }
+.my-badge-icon { font-size: 22px; line-height: 1; }
+.my-badge-label {
+  padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  background: color-mix(in srgb, var(--live) 18%, transparent); color: var(--live);
+}
+
 /* ---------- stats ---------- */
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .stat {
@@ -202,7 +215,7 @@ h1 {
 
 /* ---------- toasts ---------- */
 #toasts {
-  position: fixed; left: 16px; bottom: 16px; z-index: 1001;
+  position: fixed; left: 16px; bottom: 16px; z-index: 999;
   display: flex; flex-direction: column; gap: 8px; pointer-events: none;
 }
 .toast {
@@ -215,12 +228,32 @@ h1 {
 .toast.out { opacity: 0; transition: opacity 0.4s; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
 
+/* ---------- owner bot panel ---------- */
+.admin {
+  position: fixed; right: 16px; bottom: 16px; z-index: 999;
+  display: flex; flex-direction: column; gap: 10px; padding: 14px;
+  border-radius: 16px; background: var(--bg); border: 1px solid var(--card-border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); font-size: 14px;
+}
+.admin-title { font-weight: 700; display: flex; justify-content: space-between; gap: 12px; }
+.admin-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.admin-row { display: flex; gap: 6px; }
+.admin button {
+  font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 10px; cursor: pointer;
+  color: var(--fg); background: var(--card); border: 1px solid var(--card-border);
+}
+.admin button:hover:not(:disabled) { border-color: var(--live); }
+.admin button:disabled { opacity: 0.4; }
+.admin .admin-lock { background: none; border: none; padding: 0; color: var(--muted); font-size: 12px; align-self: flex-start; }
+
 /* ---------- small screens ---------- */
 @media (max-width: 600px) {
   .stats { grid-template-columns: 1fr; gap: 12px; }
   .stat { padding: 18px 20px; display: flex; align-items: baseline; justify-content: space-between; }
   .stat-label { margin-top: 0; }
   .lede { font-size: 16px; }
+  .admin { left: 16px; }
+  .has-admin #toasts { bottom: 140px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
