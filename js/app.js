@@ -603,7 +603,10 @@
     panel = document.createElement("div");
     panel.className = "admin";
     panel.innerHTML = `
-      <div class="admin-title">Cursor bots <span class="admin-count"></span></div>
+      <div class="admin-title">
+        <span>Cursor bots <span class="admin-count"></span></span>
+        <button type="button" class="admin-hide" data-act="hide" title="Hide (Shift+B shows it again)">Hide</button>
+      </div>
       <div class="admin-row">
         <button type="button" data-act="add">+ Add</button>
         <button type="button" data-act="remove">− Remove</button>
@@ -616,6 +619,7 @@
       const act = e.target.closest("button")?.dataset.act;
       if (act === "add") addBot();
       if (act === "remove") removeBot();
+      if (act === "hide") hidePanel(true);
       if (act === "clear" || act === "lock") while (bots.length) removeBot();
       if (act === "lock") {
         storage(localStorage, ADMIN_STORE, null);
@@ -626,10 +630,27 @@
       }
     });
     document.body.append(panel);
-    document.body.classList.add("has-admin");
     updatePanel();
+    hidePanel(storage(localStorage, PANEL_HIDDEN_STORE) === "1", true);
     setOwner(true);
   }
+
+  // Hide just tucks the panel away; bots keep running and you stay the owner.
+  const PANEL_HIDDEN_STORE = `visitme:${cfg.SITE_ID}:panel-hidden`;
+
+  function hidePanel(hide, quiet) {
+    if (!panel) return;
+    panel.hidden = hide;
+    document.body.classList.toggle("has-admin", !hide);
+    storage(localStorage, PANEL_HIDDEN_STORE, hide ? "1" : null);
+    if (hide && !quiet) toast("Bot panel hidden. Press Shift+B to show it.", me.hue);
+  }
+
+  addEventListener("keydown", (e) => {
+    if (!panel || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || e.key.toLowerCase() !== "b") return;
+    if (e.target.closest?.("input, textarea, [contenteditable]")) return;
+    hidePanel(!panel.hidden);
+  });
 
   function setOwner(on) {
     me.owner = on;
@@ -638,7 +659,14 @@
     publish("s");
   }
 
-  const unlock = () => isAdmin().then((ok) => { if (ok && !panel) showPanel(); });
+  const unlock = () => {
+    const viaLink = location.hash.startsWith("#admin=");
+    return isAdmin().then((ok) => {
+      if (!ok) return;
+      if (!panel) showPanel();
+      if (viaLink) hidePanel(false);
+    });
+  };
   unlock();
   // Pasting the admin link into a tab already on the site only changes the #hash.
   addEventListener("hashchange", () => { if (location.hash.startsWith("#admin=")) unlock(); });

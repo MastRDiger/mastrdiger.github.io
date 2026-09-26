@@ -34,7 +34,7 @@ Open it in two browser windows (or send the link to a friend) to see the live cu
 
 ## Cursor bots (owner only)
 
-Open your private admin link once (it's in `admin-link.txt`, which is never uploaded). A **Cursor bots** panel appears in the corner where you can add up to 8 bots that wander around and click. They look like regular visitors: each new bot counts as a unique visitor and a visit, takes the next visitor number and badge, and counts toward "Online now". The panel shows how many visitors were bots and how many were real. Bots run in your browser tab, so they disappear when you close it. The panel stays unlocked in that browser until you click **Lock admin**.
+Open your private admin link once (it's in `admin-link.txt`, which is never uploaded). A **Cursor bots** panel appears in the corner where you can add up to 8 bots that wander around and click. They look like regular visitors: each new bot counts as a unique visitor and a visit, takes the next visitor number and badge, and counts toward "Online now". The panel shows how many visitors were bots and how many were real. Bots run in your browser tab, so they disappear when you close it. Click **Hide** to tuck the panel away while your bots keep running; press **Shift+B** (or open your admin link again) to bring it back. The panel stays unlocked in that browser until you click **Lock admin**, which also removes your bots.
 
 To change the key, pick a new one, put its SHA-256 hash in `ADMIN_HASH` in `js/config.js`, and use `…/#admin=<new key>`.
 
