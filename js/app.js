@@ -213,8 +213,14 @@
     for (const p of peers.values()) if (p.seen < cutoff) removePeer(p.id, true);
   }, 2000);
 
-  // Smoothly glide remote cursors toward their latest position.
-  function frame() {
+  // Smoothly glide remote cursors toward their latest position. The blend is
+  // time-based, so it looks the same at any frame rate.
+  const SMOOTHING_MS = 55;
+  let lastFrame = performance.now();
+
+  function frame(now) {
+    const k = 1 - Math.exp(-Math.min(100, now - lastFrame) / SMOOTHING_MS);
+    lastFrame = now;
     for (const p of peers.values()) {
       if (p.tx === null) {
         p.el.classList.remove("visible");
@@ -225,8 +231,8 @@
         p.cx = p.tx;
         p.cy = p.ty;
       } else {
-        p.cx += (p.tx - p.cx) * 0.35;
-        p.cy += (p.ty - p.cy) * 0.35;
+        p.cx += (p.tx - p.cx) * k;
+        p.cy += (p.ty - p.cy) * k;
       }
       const [vx, vy] = toViewport(p.cx, p.cy);
       p.el.style.transform = `translate3d(${vx}px, ${vy}px, 0)`;
@@ -452,7 +458,6 @@
   // ---------------------------------------------------------------------------
   const ADMIN_STORE = `visitme:${cfg.SITE_ID}:admin`;
   const MAX_BOTS = 8;
-  const BOT_TICK_MS = 120;
   const bots = [];
   let panel = null;
 
@@ -475,6 +480,7 @@
   const rand = (min, max) => min + Math.random() * (max - min);
 
   function sendBot(b, t) {
+    if (!b.ready) return;
     if (send(b.id, t === "l" ? { t } : { t, v: b.v, h: b.hue, x: b.x, y: b.y })) b.lastSent = Date.now();
   }
 
@@ -491,17 +497,31 @@
     return v;
   }
 
-  function addBot() {
+  // Each bot arrives like a new visitor: it adds to the visitor and visit
+  // totals and takes the next visitor number. A separate tally remembers how
+  // many visitors were bots, so the owner can still tell the real count.
+  const BOT_TALLY = "bot-visitors";
+  let botTally = null;
+
+  async function addBot() {
     if (bots.length >= MAX_BOTS) return;
     const taken = [me.hue, ...[...peers.values()].map((p) => p.hue), ...bots.map((b) => b.hue)];
     const b = {
-      id: randomId(), v: randomVisitorNumber(), hue: bestHue(taken),
-      x: rand(0.1, 0.9), y: rand(0.1, 0.9), tx: rand(0.05, 0.95), ty: rand(0.05, 0.95),
-      waitUntil: 0, phase: rand(0, 6.28), lastSent: 0,
+      id: randomId(), v: 0, hue: bestHue(taken), ready: false,
+      x: rand(0.1, 0.9), y: rand(0.1, 0.9), path: null, waitUntil: 0, lastSent: 0,
     };
     bots.push(b);
-    sendBot(b, "h");
     updatePanel();
+    try {
+      b.v = await counter("hit", "visitors");
+      counter("hit", "visits").catch(() => {});
+      counter("hit", BOT_TALLY).then((n) => { botTally = n; updatePanel(); }, () => {});
+    } catch {
+      b.v = randomVisitorNumber();
+    }
+    if (!bots.includes(b)) return;
+    b.ready = true;
+    sendBot(b, "h");
   }
 
   function removeBot(b = bots[bots.length - 1]) {
@@ -511,31 +531,63 @@
     updatePanel();
   }
 
-  // Wander: glide to a random spot, pause, sometimes click, repeat.
-  setInterval(() => {
+  // Background tabs slow timers to once a second (or less), which would make
+  // bots stutter or vanish. Timers inside a Worker keep full speed.
+  function startTicker(ms, fn) {
+    try {
+      const src = `setInterval(() => postMessage(0), ${ms});`;
+      new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" }))).onmessage = fn;
+    } catch {
+      setInterval(fn, ms);
+    }
+  }
+
+  const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+  // Plan a gently curved glide to a random spot; longer trips take longer.
+  function planMove(b, now) {
+    const x1 = rand(0.05, 0.95);
+    const y1 = rand(0.08, 0.92);
+    const dx = x1 - b.x;
+    const dy = y1 - b.y;
+    const dist = Math.hypot(dx, dy) || 1e-6;
+    const bend = rand(-0.3, 0.3) * dist;
+    b.path = {
+      x0: b.x, y0: b.y, x1, y1,
+      cx: (b.x + x1) / 2 - (dy / dist) * bend,
+      cy: (b.y + y1) / 2 + (dx / dist) * bend,
+      start: now,
+      dur: 450 + dist * rand(1300, 2300),
+    };
+  }
+
+  // Wander: glide somewhere, pause, sometimes click, repeat.
+  function tickBots() {
     const now = Date.now();
     for (const b of bots) {
-      if (now < b.waitUntil) {
-        if (now - b.lastSent > HEARTBEAT_MS) sendBot(b, "s");
-        continue;
+      if (!b.ready) continue;
+      if (!b.path) {
+        if (now < b.waitUntil) {
+          if (now - b.lastSent > HEARTBEAT_MS) sendBot(b, "s");
+          continue;
+        }
+        planMove(b, now);
       }
-      const dx = b.tx - b.x;
-      const dy = b.ty - b.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < 0.01) {
-        if (Math.random() < 0.35) sendBot(b, "c");
-        b.waitUntil = now + rand(300, 2500);
-        b.tx = rand(0.05, 0.95);
-        b.ty = rand(0.05, 0.95);
-        continue;
-      }
-      const step = Math.min(dist, Math.max(0.006, dist * 0.14));
-      const wobble = Math.sin(now / 350 + b.phase) * 0.004;
-      b.x = clamp01(b.x + (dx / dist) * step - (dy / dist) * wobble);
-      b.y = clamp01(b.y + (dy / dist) * step + (dx / dist) * wobble);
+      const { x0, y0, cx, cy, x1, y1, start, dur } = b.path;
+      const t = Math.min(1, (now - start) / dur);
+      const e = easeInOut(t);
+      const u = 1 - e;
+      b.x = clamp01(u * u * x0 + 2 * u * e * cx + e * e * x1);
+      b.y = clamp01(u * u * y0 + 2 * u * e * cy + e * e * y1);
       sendBot(b, "s");
+      if (t >= 1) {
+        b.path = null;
+        if (Math.random() < 0.3) sendBot(b, "c");
+        b.waitUntil = now + (Math.random() < 0.25 ? rand(0, 250) : rand(500, 2600));
+      }
     }
-  }, BOT_TICK_MS);
+  }
+  startTicker(SEND_EVERY_MS, tickBots);
 
   function updatePanel() {
     if (!panel) return;
@@ -543,6 +595,8 @@
     panel.querySelector('[data-act="add"]').disabled = bots.length >= MAX_BOTS;
     panel.querySelector('[data-act="remove"]').disabled = !bots.length;
     panel.querySelector('[data-act="clear"]').disabled = !bots.length;
+    panel.querySelector(".admin-note").textContent = botTally === null ? "" :
+      `${botTally.toLocaleString()} bot visitors so far · ${Math.max(0, visitorTotal - botTally).toLocaleString()} real`;
   }
 
   function showPanel() {
@@ -555,7 +609,9 @@
         <button type="button" data-act="remove">− Remove</button>
         <button type="button" data-act="clear">Clear</button>
       </div>
+      <div class="admin-note"></div>
       <button type="button" class="admin-lock" data-act="lock">Lock admin</button>`;
+    counter("get", BOT_TALLY).then((n) => { botTally = n; }, () => { botTally = 0; }).then(updatePanel);
     panel.addEventListener("click", (e) => {
       const act = e.target.closest("button")?.dataset.act;
       if (act === "add") addBot();
@@ -609,7 +665,7 @@
         value = await counter("get", key).catch(() => counter("hit", key));
       }
       animateCount(el, value);
-      if (key === "visitors") visitorTotal = value;
+      if (key === "visitors") { visitorTotal = value; updatePanel(); }
     } catch {
       el.textContent = "?";
       return;
@@ -621,7 +677,7 @@
         const v = JSON.parse(e.data).value;
         if (!Number.isFinite(v)) return;
         animateCount(el, v);
-        if (key === "visitors") visitorTotal = v;
+        if (key === "visitors") { visitorTotal = v; updatePanel(); }
       } catch { /* ignore bad frames */ }
     };
   }
