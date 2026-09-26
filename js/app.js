@@ -566,7 +566,10 @@
     updatePanel();
   }
 
-  isAdmin().then((ok) => { if (ok) showPanel(); });
+  const unlock = () => isAdmin().then((ok) => { if (ok && !panel) showPanel(); });
+  unlock();
+  // Pasting the admin link into a tab already on the site only changes the #hash.
+  addEventListener("hashchange", () => { if (location.hash.startsWith("#admin=")) unlock(); });
 
   // ---------------------------------------------------------------------------
   // Visit counters (Abacus free counter API, with live SSE updates)
