@@ -6,7 +6,8 @@ Every visitor gets a permanent number based on when they first arrived (Visitor 
 
 | Badge | Who |
 | --- | --- |
-| 👑 First visitor | #1 |
+| 👑 Owner | you, while your admin panel is unlocked |
+| 🏆 First visitor | #1 |
 | 💎 Top 10 | #2–10 |
 | 🥇 Top 100 | #11–100 |
 | 🥈 Top 1,000 | #101–1,000 |
@@ -33,7 +34,7 @@ Open it in two browser windows (or send the link to a friend) to see the live cu
 
 ## Cursor bots (owner only)
 
-Open your private admin link once (it's in `admin-link.txt`, which is never uploaded). A **Cursor bots** panel appears in the corner where you can add up to 8 bots that wander around and click. Everyone sees them, labeled 🤖, and they aren't counted in "Online now". Bots run in your browser tab, so they disappear when you close it. The panel stays unlocked in that browser until you click **Lock admin**.
+Open your private admin link once (it's in `admin-link.txt`, which is never uploaded). A **Cursor bots** panel appears in the corner where you can add up to 8 bots that wander around and click. They look like regular visitors, with a random visitor number and badge, and count toward "Online now". They don't change the visitor or visit totals. Bots run in your browser tab, so they disappear when you close it. The panel stays unlocked in that browser until you click **Lock admin**.
 
 To change the key, pick a new one, put its SHA-256 hash in `ADMIN_HASH` in `js/config.js`, and use `…/#admin=<new key>`.
 
