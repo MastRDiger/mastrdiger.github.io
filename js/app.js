@@ -57,6 +57,8 @@
     id: randomId(),
     v: Number.isInteger(storedNumber) && storedNumber > 0 ? storedNumber : 0,
     owner: false,
+    g: "",   // arcade game key, if playing
+    gs: "",  // "w" waiting for opponent, "p" playing online, "s" playing solo
     hue: Math.floor(Math.random() * 360),
   };
 
@@ -128,6 +130,7 @@
   addEventListener("pointerdown", (e) => {
     clientX = e.clientX;
     clientY = e.clientY;
+    if (document.body.classList.contains("arcade-open")) return;
     const { x, y } = pagePos();
     ripple(x, y, me.hue);
     publish("c");
@@ -172,19 +175,21 @@
   function upsertPeer(id, msg) {
     const v = numberOf(msg.v);
     const owner = msg.o === 1;
+    const g = typeof msg.g === "string" && /^[a-z0-9]{1,12}$/.test(msg.g) ? msg.g : "";
+    const gs = g && ["w", "p", "s"].includes(msg.gs) ? msg.gs : "";
     const hue = hueOf(msg.h);
     let p = peers.get(id);
     let listChanged = false;
 
     if (!p) {
       if (peers.size >= MAX_PEERS) return null;
-      p = { id, v, owner, hue, tx: null, ty: null, cx: null, cy: null };
+      p = { id, v, owner, g, gs, hue, tx: null, ty: null, cx: null, cy: null };
       p.el = makeCursor(labelFor(p), hue, false);
       peers.set(id, p);
       listChanged = true;
       if (Date.now() > discoveryUntil) toast(`${labelFor(p)} joined`, hue);
-    } else if (p.v !== v || p.owner !== owner || p.hue !== hue) {
-      Object.assign(p, { v, owner, hue });
+    } else if (p.v !== v || p.owner !== owner || p.g !== g || p.gs !== gs || p.hue !== hue) {
+      Object.assign(p, { v, owner, g, gs, hue });
       p.el.querySelector(".tag").textContent = labelFor(p);
       p.el.style.setProperty("--h", hue);
       listChanged = true;
@@ -298,6 +303,7 @@
       list.append(li);
     }
     updatePanel();
+    peerListeners.forEach((fn) => fn());
   }
 
   function toast(text, hue) {
@@ -373,7 +379,7 @@
 
   function publish(t) {
     const { x, y } = pagePos();
-    if (send(me.id, t === "l" ? { t } : { t, v: me.v || undefined, o: me.owner ? 1 : undefined, h: me.hue, x, y })) lastSent = Date.now();
+    if (send(me.id, t === "l" ? { t } : { t, v: me.v || undefined, o: me.owner ? 1 : undefined, g: me.g || undefined, gs: me.gs || undefined, h: me.hue, x, y })) lastSent = Date.now();
   }
 
   // Someone new said hello: tell them we're here (with jitter so we don't all reply at once).
@@ -415,6 +421,7 @@
         publish("h");
         bots.forEach((b) => sendBot(b, "h"));
       });
+      for (const t of topicHandlers.keys()) client.subscribe(t, { qos: 0 });
       setTimeout(avoidColorClash, DISCOVERY_MS - 500);
     });
     client.on("reconnect", () => setStatus("connecting", "Reconnecting…"));
@@ -422,6 +429,15 @@
     client.on("error", () => {});
 
     client.on("message", (topic, payload) => {
+      // Other features (the arcade) listen on their own topics.
+      if (!topic.startsWith(`${TOPIC}/`)) {
+        const fn = topicHandlers.get(topic);
+        if (!fn || payload.length > 2048) return;
+        let msg;
+        try { msg = JSON.parse(payload.toString()); } catch { return; }
+        if (msg && typeof msg === "object") fn(msg);
+        return;
+      }
       if (payload.length > 512) return;
       const id = topic.slice(TOPIC.length + 1);
       if (id === me.id || !ID_RE.test(id)) return;
@@ -712,6 +728,39 @@
     renderPeople();
     publish("s");
   });
+
+  // ---------------------------------------------------------------------------
+  // Small API for js/arcade.js
+  // ---------------------------------------------------------------------------
+  const peerListeners = new Set();
+  const topicHandlers = new Map();
+
+  window.visitme = {
+    me,
+    peers,
+    labelFor,
+    topic: (sub) => `visitme/${SITE_ID}/${sub}`,
+    send(topic, msg) {
+      if (!client || !client.connected) return false;
+      client.publish(topic, JSON.stringify(msg), { qos: 0 });
+      return true;
+    },
+    subscribe(topic, fn) {
+      topicHandlers.set(topic, fn);
+      if (client && client.connected) client.subscribe(topic, { qos: 0 });
+    },
+    unsubscribe(topic) {
+      topicHandlers.delete(topic);
+      if (client && client.connected) client.unsubscribe(topic);
+    },
+    setActivity(g, gs) {
+      me.g = g || "";
+      me.gs = g ? gs : "";
+      renderPeople();
+      publish("s");
+    },
+    onPeers: (fn) => peerListeners.add(fn),
+  };
 
   renderMe();
   renderPeople();

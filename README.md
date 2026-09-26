@@ -32,6 +32,10 @@ Open it in two browser windows (or send the link to a friend) to see the live cu
 - Rename the repo to `<your-username>.github.io` to get `https://<your-username>.github.io/` with nothing after it.
 - Or buy a domain (Namecheap, Cloudflare, Porkbun, …) and add it under **Settings → Pages → Custom domain**. Connecting it is free.
 
+## Arcade
+
+Four cabinets at the bottom of the page: **Pac-Man**, **Pong**, **Tic-Tac-Toe** and **Connect Four**. Click one to play by yourself (against the computer, or classic solo Pac-Man) or against someone else on the site. Online play pairs you with anyone waiting for the same game, and each cabinet shows how many people are playing or waiting. In online Pac-Man, two Pac-Men share one maze and race for the most points.
+
 ## Cursor bots (owner only)
 
 Open your private admin link once (it's in `admin-link.txt`, which is never uploaded). A **Cursor bots** panel appears in the corner where you can add up to 8 bots that wander around and click. They look like regular visitors: each new bot counts as a unique visitor and a visit, takes the next visitor number and badge, and counts toward "Online now". The panel shows how many visitors were bots and how many were real. Bots run in your browser tab, so they disappear when you close it. Press **Shift+B** to hide or show the panel; your bots keep running while it's hidden. The panel stays unlocked in that browser until you click **Lock admin**, which also removes your bots.
@@ -58,6 +62,7 @@ index.html     page layout
 style.css      styles (dark and light mode)
 js/config.js   settings
 js/app.js      live cursors, presence and counters
+js/arcade.js   arcade cabinets and games
 favicon.svg    tab icon
 ```
 
