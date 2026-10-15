@@ -33,8 +33,15 @@
   // Names and badges. Everyone is "Visitor #N", where N is the order they first
   // arrived in. The number is saved in their browser, so it stays theirs.
   // ---------------------------------------------------------------------------
+  // Hand-picked tags for specific visitor numbers.
+  const SPECIAL = {
+    2: { icon: "💻", label: "The hacker.../owner" },
+    48: { icon: "🗡️", label: "JetaKnight" },
+  };
+
   function badgeFor(v) {
     if (!v) return null;
+    if (SPECIAL[v]) return SPECIAL[v];
     if (v === 1) return { icon: "🏆", label: "First visitor" };
     if (v <= 10) return { icon: "💎", label: "Top 10" };
     if (v <= 100) return { icon: "🥇", label: "Top 100" };
@@ -46,7 +53,7 @@
   // The site owner (admin unlocked) wears the crown.
   const OWNER_BADGE = { icon: "👑", label: "Owner" };
   const badgeOf = (p) => (p.owner ? OWNER_BADGE : badgeFor(p.v));
-  const nameFor = (p) => (p.owner ? "Owner" : p.v ? `Visitor #${p.v.toLocaleString()}` : "Visitor");
+  const nameFor = (p) => (p.owner ? "Owner" : SPECIAL[p.v] ? SPECIAL[p.v].label : p.v ? `Visitor #${p.v.toLocaleString()}` : "Visitor");
   const iconFor = (p) => badgeOf(p)?.icon || "";
   const labelFor = (p) => [iconFor(p), nameFor(p)].filter(Boolean).join(" ");
 
